@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import pandas as pd
+import numpy as np
+import scipy.spatial.distance as dist
+import matplotlib.pyplot as plt
+import sys
+
+print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+print('                    CheckAll 0.1                    ')
+print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+print('++++++++++++++++++++++++++++++++++++++++++++++++++++')
+
+
+
+#sys.argv[1] 'run'
+#sys.argv[2] is the file you want to use
+#sys.argv[3] name output file
+
+
+if sys.argv[1] == 'help':
+    print('----------------------------------------------')
+    print('--------------HELP NOTES----------------------')
+    print('----------------------------------------------')
+    print('Correct syntax: ')
+    print('CheckAll_0_1.py run filename.csv')
+    print('----------------------------------------------')
+    print('----------------------------------------------')
+    print('----------------------------------------------')
+    sys.exit()
+
+print('Starting...')
+
+file = pd.read_csv(sys.argv[2])
+
+data = pd.concat([file.iloc[:,2:14], file.iloc[:,16], file.iloc[:,17:]],axis = 1)
+
+def CalcEuclDist(obj, mean_vector):
+    '''It calculate the Euclidean distance between a gene and the centroid of the condition 
+    for all conditions and for all genes,
+    Then, check if the lenght of the list correspond to the lenght of genes list and return the distance
+    as a list of lists'''
+    lists = []
+    for i in range(len(obj.index)):
+        lists.append(dist.euclidean(obj.iloc[i,:], mean_vector))
+    
+    return lists
+
+def CalcEuclDistGC(obj, mean_vector):
+    '''It calculate the Euclidean distance between a gene and the centroid of the condition 
+    for all conditions and for all genes,
+    Then, check if the lenght of the list correspond to the lenght of genes list and return the distance
+    as a list of lists'''
+    lists = []
+    for i in range(len(obj.index)):
+        lists.append(dist.euclidean(obj.iloc[i], mean_vector))
+    
+    return lists
+
+data['DistanceFromCentroidsCOV'] = CalcEuclDist(data.iloc[:, :12], data.iloc[:, :12].mean())
+
+data['DistanceFromCentroidsGC'] = CalcEuclDistGC(data.iloc[:, 12],data.iloc[:, 12].mean())
+
+data['DistanceFromCentroidsKmers'] = CalcEuclDist(data.iloc[:, 13:],data.iloc[:, 13:].mean())
+
+
+fig, ax = plt.subplots(2,1)
+ax[0].boxplot(data.iloc[:,-3:])
+ax[1].boxplot(data.iloc[:,-3:], showfliers = False)
+ax[0].set_title('Treshold boxplot')
+ax[0].set_ylabel('With outliers')
+ax[1].set_ylabel('No outliers')
+plt.show()
+
+
+treshold = int(input('Please set a treshold after looking at the treshold boxplot:  '))
+
+plt.savefig(str(sys.argv[3])+'_treshold_boxplot.pdf')
+plt.clf()
+
+print('Treshold boxplot saved correctly')
+
+
+print('Defining outliers...')
+
+data['Class'] = ['normal' for e in data.index]
+for e in data.index:
+    if data.loc[e, 'DistanceFromCentroidsCOV'] > treshold:
+        data.loc[e, 'Class'] = 'outlierCOV'
+    elif data.loc[e,'DistanceFromCentroidsGC'] > treshold:
+    	data.loc[e, 'Class'] = 'outlierGC'
+    elif data.loc[e, 'DistanceFromCentroidsKmers'] > treshold:
+    	data.loc[e, 'Class'] = 'outlierKM'
+
+
+
+nGCout = data[data['DistanceFromCentroidsGC'] > treshold].count()[0]
+
+nKMout = data[data['DistanceFromCentroidsKmers'] > treshold].count()[0]
+
+nCOVout = data[data['DistanceFromCentroidsCOV'] > treshold].count()[0]
+
+color = ['black' if e == 'normal' else 'red' for e in data['Class']]
+color1 = ['black' if e == 'normal' else 'violet' for e in data['Class']]
+color2 = ['black' if e == 'normal' else 'orange' for e in data['Class']]
+
+plt.scatter(data.index, data['DistanceFromCentroidsCOV'], color = color, alpha = 0.5, label = str(nCOVout)+' outlier for Coverage Distance')
+plt.scatter(data.index, data['DistanceFromCentroidsGC'], color = color1, alpha = 0.5, label = str(nGCout)+' outlier for GC Distance')
+plt.scatter(data.index, data['DistanceFromCentroidsKmers'], color = color2, alpha = 0.5, label = str(nKMout)+' outlier for Kmers Distance')
+plt.title('Outliers in GC, Coverage and Kmers frequency')
+plt.xticks([])
+plt.ylabel('distance')
+plt.xlabel('genes')
+plt.legend()
+
+
+plt.savefig(str(sys.argv[3])+'_outlier_scatterplot.pdf')
+plt.clf()
+
+print('Outlier scatterplot saved correctly')
+
+
+output = []
+for e in file.index:
+    if e in data[data['Class'] == 'outlierCOV'].index:
+        output.append(['COV',file.iloc[e,0]])
+    if e in data[data['Class'] == 'outlierGC'].index:
+        output.append(['GC',file.iloc[e,0]])
+    if e in data[data['Class'] == 'outlierKM'].index:
+        output.append(['KM',file.iloc[e,0]])
+
+out = pd.DataFrame(output, index = range(len(output)))
+
+#out.columns = ['outliers genes']
+
+out.to_csv(str(sys.argv[3])+'_outliers_genes.csv')
+
+print('list of outliers genes saved correctly')
+
+control = []
+matched = []
+for e in output:
+    if e[1] not in control:
+        control.append(e[1])
+    else:
+        matched.append(str(e[1])+'_matched')
+
+out2 = pd.DataFrame(matched)
+
+out2.to_csv(str(sys.argv[3])+'_MATCH_outliers_genes.csv')
+
+print('list of outliers genes in more than 1 category saved correctly')
+
+print('-------------------------------------------')
+print('-------------------------------------------')
+print('Program Closed Correctly')
+
+
